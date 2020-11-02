@@ -1,0 +1,628 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Imports"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Bad key \"text.kerning_factor\" on line 4 in\n",
+      "/home/ellie/anaconda3/envs/py3/lib/python3.8/site-packages/matplotlib/mpl-data/stylelib/_classic_test_patch.mplstyle.\n",
+      "You probably need to get an updated matplotlibrc file from\n",
+      "https://github.com/matplotlib/matplotlib/blob/v3.1.3/matplotlibrc.template\n",
+      "or from the matplotlib source distribution\n"
+     ]
+    }
+   ],
+   "source": [
+    "\n",
+    "import math\n",
+    "import numpy as np\n",
+    "import scipy\n",
+    "from scipy import linalg\n",
+    "import scipy.integrate as integ\n",
+    "import scipy.stats as stats\n",
+    "import numpy as np\n",
+    "import astropy.units as u\n",
+    "# import glue \n",
+    "import matplotlib.pyplot as plt\n",
+    "from ipywidgets import interact, interactive, fixed, interact_manual\n",
+    "import ipywidgets as widgets\n",
+    "from scipy.optimize import minimize"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "SyntaxError",
+     "evalue": "invalid syntax (<ipython-input-3-16dff8742d8d>, line 2)",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;36m  File \u001b[0;32m\"<ipython-input-3-16dff8742d8d>\"\u001b[0;36m, line \u001b[0;32m2\u001b[0m\n\u001b[0;31m    matplotlib inline\u001b[0m\n\u001b[0m               ^\u001b[0m\n\u001b[0;31mSyntaxError\u001b[0m\u001b[0;31m:\u001b[0m invalid syntax\n"
+     ]
+    }
+   ],
+   "source": [
+    "# glue.qglue()\n",
+    "matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Choose parameters for Earth or Mars"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "###############FOR EARTH########################"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "KT_TNT_EQUIV = 4.185e12\n",
+    "MEAN_IMPACT_VELOCITY = 16700. # EARTH\n",
+    "\n",
+    "def grav(alt):\n",
+    "    G = 6.6726e-11    #N-m2/kg2\n",
+    "    M = 5.97237e24      #kg Mass of Earth\n",
+    "    mean_rad = 6371000.0\n",
+    "        \n",
+    "    return G * M / (mean_rad + alt) ** 2\n",
+    "\n",
+    "def atm_roh(alt):\n",
+    "    p0_earth = 1.29\n",
+    "    scale_height_earth = 7160.0\n",
+    "\n",
+    "    return p0_earth * np.exp(-alt / scale_height_earth)\n",
+    "\n",
+    "def new_alt(alt, angle, dt, v):\n",
+    "    dh = np.sin(angle) * dt * v\n",
+    "    return alt - dh\n",
+    "\n",
+    "def rad2mass(rad, pm):\n",
+    "    return 4. / 3. * math.pi * (rad)**3 * pm"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "###############FOR MARS########################"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "KT_TNT_EQUIV = 4.185e12\n",
+    "MEAN_IMPACT_VELOCITY = 11600 #8750. # MARS\n",
+    "\n",
+    "def grav(alt):\n",
+    "    G = 6.6726e-11    #N-m2/kg2\n",
+    "    M = 0.64171e24      #kg Mass of Mars\n",
+    "    mean_rad = 3396200.0\n",
+    "        \n",
+    "    return G * M / (mean_rad + alt) ** 2\n",
+    "\n",
+    "def atm_roh(alt):\n",
+    "    p0_mars = 0.020\n",
+    "    scale_height_mars = 10800.0\n",
+    "\n",
+    "    return p0_mars * np.exp(-alt / scale_height_mars)\n",
+    "#     if alt>7000:\n",
+    "#         Temp =  -23.4 - 0.00222 * alt  #celcius\n",
+    "#     else: # if alt< 7000:\n",
+    "#         Temp =  -31 - 0.000998 * alt  #celcius\n",
+    "    \n",
+    "#     pressure = 0.699 * np.exp(-0.00009 * alt)\n",
+    "\n",
+    "#     return pressure / (0.1921 * (Temp + 273.1))  # density \n",
+    "\n",
+    "def new_alt(alt, angle, dt, v):\n",
+    "    dh = np.sin(angle) * dt * v\n",
+    "    return alt - dh\n",
+    "\n",
+    "def rad2mass(rad, pm):\n",
+    "    return 4. / 3. * math.pi * (rad)**3 * pm"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "53044.70832037153\n"
+     ]
+    }
+   ],
+   "source": [
+    "def mars_height_equivalent(alt):\n",
+    "    \n",
+    "    p0_earth = 1.29\n",
+    "    scale_height_earth = 7160.0\n",
+    "    p0_mars = 0.020\n",
+    "    scale_height_mars = 10800.0\n",
+    "    \n",
+    "    \n",
+    "    density_earth = p0_earth * np.exp(-alt / scale_height_earth)\n",
+    "    alt_mars = -np.log(density_earth / p0_mars) * scale_height_mars\n",
+    "    \n",
+    "    return alt_mars\n",
+    "\n",
+    "print(mars_height_equivalent(65000.))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### ablation and drag function definitions"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def ablation_fun(v0, slope, r0, pm, yield_str, ground=0.):\n",
+    "    ## assumptions:\n",
+    "    ### Drag coefficient\n",
+    "    cd = 1.3\n",
+    "    \n",
+    "    ### Ablation coefficient\n",
+    "    sigma = 2.5e-8 # sec2/m2\n",
+    "    \n",
+    "    ## Start modelling from alt0 (~space)\n",
+    "    alt0 = 200000.0\n",
+    "    \n",
+    "    ## bulk strength equation from collins et al. 2005\n",
+    "    #yield_str = pow(10, 2.107+0.0624*pow(pm, 0.5))\n",
+    "\n",
+    "    ## initiate breakup altitudes\n",
+    "    z_break = 0.\n",
+    "    z_ab = 0.\n",
+    "    z_b = 0.\n",
+    "\n",
+    "    ## define common drag/ablation equation parameters\n",
+    "    ### constant wrt height for velocity\n",
+    "    kv = 3/8. * cd / pm \n",
+    "    \n",
+    "    ### constant wrt height for radius\n",
+    "    kr = 1./8 * sigma * cd / pm \n",
+    "\n",
+    "    # I = 4.07 * cd * H * yield_str / (pm * d * v0**2 * sin(angle))\n",
+    "    # z_break = - H * (log(yield_str / (po * v0**2)) + 1.308 - 0.314 * I - 1.303 * np.sqrt(1 - I))\n",
+    "    \n",
+    "    ## mass for a sphere from volume and density\n",
+    "    m = 4. / 3. * math.pi * (r0)**3 * pm\n",
+    "    \n",
+    "    ## energy given as kinetic energy\n",
+    "    energy_0 = 0.5 * m * v0**2\n",
+    "    \n",
+    "    ## integration height range to be considered\n",
+    "    alt_range = [alt0, z_break]\n",
+    "    calc_alts=np.r_[alt0:ground:-100]\n",
+    "    \n",
+    "    ## parameters to be passed to integration:\n",
+    "    ### initialisation of state before hitting the atmosphere \n",
+    "    ### [initial velocity, initial radius, initial energy, incoming angle]\n",
+    "    s_angle = np.sin(slope * u.deg)\n",
+    "    X = np.array([v0, r0,  energy_0, s_angle])\n",
+    "    X_all = np.array([v0, r0,  energy_0, s_angle, alt0])\n",
+    "\n",
+    "    ### constants and meteoroid density\n",
+    "    param = [kv, kr, pm]\n",
+    "    \n",
+    "    ## start integration. Stop when hits ground, when smaller than 1 mm diam or reach breakup altitude\n",
+    "    i = 1\n",
+    "\n",
+    "    while i<len(calc_alts) and X[1]>5e-4 and calc_alts[i] > z_break:    \n",
+    "\n",
+    "        ode_out = scipy.integrate.odeint(integrals_abl, X, [calc_alts[i-1], calc_alts[i]],  args = (param,)) \n",
+    "        \n",
+    "        X = ode_out[1]\n",
+    "\n",
+    "        ## calculate head pressure body is exerted to \n",
+    "        z_test = atm_roh(calc_alts[i]) * X[0]**2\n",
+    "\n",
+    "        ## test if the bulk strength of body is exceeded by head pressure. \n",
+    "        ## set z_break to current altitude \n",
+    "        if z_test>=yield_str:\n",
+    "            z_break = (calc_alts[i-1]+calc_alts[i])/2.0\n",
+    "        elif X[1] < 5e-4:\n",
+    "            z_ab = calc_alts[i]\n",
+    "        \n",
+    "        save_row = np.hstack((X, calc_alts[i]))\n",
+    "        X_all = np.vstack((X_all, save_row))\n",
+    "                    \n",
+    "        i+= 1\n",
+    "        \n",
+    "    ## final state pulled from integration\n",
+    "    [v, r, energy, s_angle] = X\n",
+    "    slope = np.arcsin(s_angle) * u.rad\n",
+    "    ## mass for a sphere from volume and density\n",
+    "    m = 4. / 3. * math.pi * (r)**3 * pm\n",
+    "\n",
+    "\n",
+    "    return [v,                            # velocity\n",
+    "           r,                            # radius\n",
+    "           energy,                       # final energy\n",
+    "           slope.to(u.degree),                        # final flight angle\n",
+    "           z_break,                      # bbreakup altitude\n",
+    "           None,#energy / energy_0,            # final / initial energy\n",
+    "           None,#v / v0,                       # final / initial velocity\n",
+    "           None,#r / r0,                    # final / initial diametre\n",
+    "           m,\n",
+    "           0.5 * m * v**2,\n",
+    "           X_all]\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "## define the function to integrate wrt height\n",
+    "def integrals_abl(X, h, param): \n",
+    "    [kv, kr, pm] = param\n",
+    "    g = grav(h)\n",
+    "    [v, rad, energy, s_angle] = X\n",
+    "\n",
+    "    m = rad2mass(rad, pm)\n",
+    "\n",
+    "    Xdot=[0., 0., 0., 0.] \n",
+    "    \n",
+    "    #dv/dh\n",
+    "    Xdot[0] = kv * atm_roh(h) * v / (rad * s_angle) - g / v\n",
+    "    #dr/dh\n",
+    "    Xdot[1] = kr * atm_roh(h) * v**2 / (s_angle)\n",
+    "    #dE/dh\n",
+    "    Xdot[2] = math.pi * pm * (2 * rad**2 * v**2 * Xdot[1] + 4/3. * rad**3 * v * Xdot[0]) #v**2 * m * v * Xdot[0]    \n",
+    "    #d_angle/dh\n",
+    "    Xdot[3] = -g / v**2 * (1 - s_angle**2) / s_angle\n",
+    "\n",
+    "    return Xdot "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "## other useful conversion functions\n",
+    "\n",
+    "def energy_t_TNT_to_diameter(energy_kT_TNT, density):\n",
+    "    mass = energy_t_TNT_to_mass(energy_kT_TNT)\n",
+    "    volume = mass / density\n",
+    "    diameter = (3. / 4. * volume / math.pi)**(1./3.) * 2\n",
+    "    return diameter\n",
+    "\n",
+    "\n",
+    "def energy_t_TNT_to_mass(energy_kT_TNT):\n",
+    "    energy_J = energy_kT_TNT * KT_TNT_EQUIV\n",
+    "    mass = energy_J * 2 / MEAN_IMPACT_VELOCITY**2\n",
+    "    return mass\n",
+    "\n",
+    "## define the crater scaling from diameter to energy from Teanby et al. 2011\n",
+    "def teanby_2011_eq_1(D, estimate='nominal'):\n",
+    "    a = 8.8e-3\n",
+    "    b = 0.32\n",
+    "    if estimate=='nominal':\n",
+    "        pass\n",
+    "    elif estimate=='hi':\n",
+    "        a += -3.5e-3\n",
+    "        b += -0.01\n",
+    "    elif estimate=='lo':\n",
+    "        a += 2.6e-3\n",
+    "        b += 0.01\n",
+    "    else:\n",
+    "        raise ValueError('estimate')\n",
+    "    \n",
+    "    E = (D/a)**(1/b)\n",
+    "    return E/KT_TNT_EQUIV"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## have a play with numbers"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### interactive energies and diameters for your choice of entry body diametre"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "select below from initial velocity (v0) - m/s, entry angle from horizontal - degrees, impactor density -kg/m3, impactor diametre - m, impactor bulk strength - MPa, crater diameter to compare to - m\n"
+     ]
+    },
+    {
+     "data": {
+      "application/vnd.jupyter.widget-view+json": {
+       "model_id": "277e5368d7b7439eac1aabb5734b3182",
+       "version_major": 2,
+       "version_minor": 0
+      },
+      "text/plain": [
+       "interactive(children=(FloatSlider(value=11600.0, description='v0', max=12200.0, min=11000.0, step=200.0), Drop…"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<function __main__.impactor_rad(v0, slope, density, diametre, bulk_strength, D)>"
+      ]
+     },
+     "execution_count": 26,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "plt.close()\n",
+    "print(\"select below from initial velocity (v0) - m/s, entry angle from horizontal - degrees, impactor density -kg/m3, impactor diametre - m, impactor bulk strength - MPa, crater diameter to compare to - m\")\n",
+    "def impactor_rad(v0, slope, density, diametre, bulk_strength, D):\n",
+    "    bulk_strength *= 1e6\n",
+    "\n",
+    "    r0 = diametre/2. \n",
+    "    m0 = 4. / 3. * math.pi * (r0)**3 * density\n",
+    "    print(f\"\\n\\n initial body radius = {r0}, diameter={diametre}\")\n",
+    "\n",
+    "    \n",
+    "    out = ablation_fun(v0, slope, r0, density, bulk_strength)\n",
+    "    \n",
+    "    ## what crater size?\n",
+    "    a = 8.8e-3\n",
+    "    b = 0.32\n",
+    "    D_nom = (out[2]**b * a) \n",
+    "    D_hi = out[2]**(b + 0.01) * (a +  2.6e-3) \n",
+    "    D_lo = out[2]**(b - 0.01) * (a - 3.5e-3) \n",
+    "    impact_diam = out[1] *2\n",
+    "\n",
+    "    print(f\"entry velocity={out[0]/1000.:.2f} km/s\\nentry diametre={diametre:.2f} m\\nentry mass={m0:.2f}\\nentry energy={0.5 * m0 * v0**2:.2e}\\nfinal mass={out[8]:.2f} kg\\nfinal diametre={impact_diam:.2f} m\\nfinal energy={out[2] / KT_TNT_EQUIV:.2e} ktTNT,\\nfinal flight angle={out[3]:.2f} degrees,\\nbreakup altitude={out[4]:.2f} m\\n\\nNominal crater diameter={D_nom:.2f} m\\nUpper crater diameter={D_hi:.2f}\\nLower crater diameter={D_lo:.2f} m\")\n",
+    "        \n",
+    "    ## use drag only, no ablation:\n",
+    "#     out = drag_fun(v0, slope, r, density, strength)\n",
+    "\n",
+    "interact(impactor_rad, v0=(11000.,12200., 200.), slope=[10, 30, 45, 60, 90], density=[2200, 3000, 3500], diametre=(0.01, .6, 0.01), bulk_strength=[0.1, 1, 10, 100], D=[1, 2, 5, 7, 10, 12, 15])\n",
+    "# interact(impactor_rad, v0=11600, slope=45, density=3000, diametre=(0.01, .6, 0.01), bulk_strength=1e6, D=3.9)\n",
+    "# interact(impactor_rad, v0=10000, slope=45, density=3000, diametre=(0.01, .6, 0.01), bulk_strength=1e6, D=1.5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### interactive energies and diameters for your choice of entry body mass"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "select below from initial velocity (v0) - m/s, entry angle from horizontal - degrees, impactor density -kg/m3, impactor mass - kg, impactor bulk strength - MPa, crater diameter to compare to - m\n"
+     ]
+    },
+    {
+     "data": {
+      "application/vnd.jupyter.widget-view+json": {
+       "model_id": "4843187de4ce4f55b8ca5e1de94451f0",
+       "version_major": 2,
+       "version_minor": 0
+      },
+      "text/plain": [
+       "interactive(children=(FloatSlider(value=11600.0, description='v0', max=12200.0, min=11000.0, step=200.0), IntS…"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<function __main__.impactor_mass(v0, slope, density, mass, bulk_strength, D)>"
+      ]
+     },
+     "execution_count": 30,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "plt.close()\n",
+    "print(\"select below from initial velocity (v0) - m/s, entry angle from horizontal - degrees, impactor density -kg/m3, impactor mass - kg, impactor bulk strength - MPa, crater diameter to compare to - m\")\n",
+    "def impactor_mass(v0, slope, density, mass, bulk_strength, D):\n",
+    "   ## mass for a sphere from volume and density\n",
+    "    r0 = (mass*u.kg / (density*u.kg/u.m**3) * 3./(4. * math.pi))**(1/3.)\n",
+    "    E0 = 0.5 * mass*u.kg * (v0 * u.m /u.s)**2 / KT_TNT_EQUIV\n",
+    "    diametre = r0*2.     \n",
+    "    m0 = 4. / 3. * math.pi * (r0)**3 * density\n",
+    "    \n",
+    "    out = ablation_fun(v0, slope, r0.value, density, bulk_strength)\n",
+    "    \n",
+    "    ## what crater size?\n",
+    "    a = 8.8e-3\n",
+    "    b = 0.32\n",
+    "    D_nom = (out[2]**b * a) \n",
+    "    D_hi = out[2]**(b + 0.01) * (a +  2.6e-3) \n",
+    "    D_lo = out[2]**(b - 0.01) * (a - 3.5e-3) \n",
+    "    impact_diam = out[1] *2\n",
+    "\n",
+    "    print(f\"entry velocity={out[0]/1000.:.2f} km/s\\nentry diametre={diametre:.2f} m\\nentry mass={m0:.2f}\\nentry energy={0.5 * m0 * v0**2:.2e}\\nfinal mass={out[8]:.2f} kg\\nfinal diametre={impact_diam:.2f} m\\nfinal energy={out[2] / KT_TNT_EQUIV:.2e} ktTNT,\\nfinal flight angle={out[3]:.2f} degrees,\\nbreakup altitude={out[4]:.2f} m\\n\\nNominal crater diameter={D_nom:.2f} m\\nUpper crater diameter={D_hi:.2f}\\nLower crater diameter={D_lo:.2f} m\")\n",
+    "       \n",
+    "interact(impactor_mass, v0=(11000.,12200., 200.), slope=45, density=[3000,3500], mass=1.5, bulk_strength=1e6, D=1.5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Plotting stuff"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[0.01 0.11 0.21 0.31 0.41 0.51 0.61 0.71 0.81 0.91 1.01 1.11 1.21 1.31\n",
+      " 1.41]\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<matplotlib.legend.Legend at 0x7faffdc34820>"
+      ]
+     },
+     "execution_count": 35,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "v0 = 11600.\n",
+    "slope = 45.\n",
+    "density = 2800.\n",
+    "bulk_strength = 10e6\n",
+    "diams = np.arange(0.01, 1.5, 0.1)\n",
+    "entry_mass = []\n",
+    "end_diams = []\n",
+    "end_mass = []\n",
+    "print(diams)\n",
+    "diam_to_craterD = np.zeros((3, len(diams)))\n",
+    "for i in range(len(diams)):\n",
+    "    diametre = diams[i]\n",
+    "    r0 = diametre/2.        \n",
+    "    out = ablation_fun(v0, slope, r0, density, bulk_strength)\n",
+    "    \n",
+    "    ## what crater size?\n",
+    "    a = 8.8e-3\n",
+    "    b = 0.32\n",
+    "    D_nom = (out[2]**b * a) \n",
+    "    D_hi = out[2]**(b + 0.01) * (a +  2.6e-3) \n",
+    "    D_lo = out[2]**(b - 0.01) * (a - 3.5e-3) \n",
+    "    impact_diam = out[1] *2\n",
+    "   \n",
+    "    diam_to_craterD[:, i] = [D_nom, D_hi, D_lo]\n",
+    "    end_diams.append(impact_diam)\n",
+    "    entry_mass.append(density * 4./3 * math.pi * r0**3)\n",
+    "    end_mass.append(density * 4./3 * math.pi * (impact_diam/2)**3)\n",
+    "\n",
+    "plt.plot(diams*100, diam_to_craterD[0, :], label='nominal' )\n",
+    "plt.plot(diams*100, diam_to_craterD[1, :], label='hi' )\n",
+    "plt.plot(diams*100, diam_to_craterD[2, :], label='lo' )\n",
+    "plt.ylim(0,20)\n",
+    "plt.legend()\n",
+    "# plt.plot(entry_mass, diam_to_craterD[0, :], label='nominal' )\n",
+    "# plt.plot(entry_mass, diam_to_craterD[1, :], label='hi' )\n",
+    "# plt.plot(entry_mass, diam_to_craterD[2, :], label='lo' )\n",
+    "# plt.legend()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
